@@ -133,6 +133,68 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 0, status.exitstatus
   end
 
+  def test_unreleased_block_below_a_released_block_is_checked
+    output, status = verify("unreleased_below_released.md")
+
+    assert_equal <<~OUTPUT, output
+      #{path("unreleased_below_released.md")}:8: [Feature] entry must come before the [Fix] entry on line 7
+    OUTPUT
+    assert_equal 1, status.exitstatus
+  end
+
+  def test_plain_unreleased_heading_below_a_released_block_is_checked
+    output, status = verify("plain_unreleased_below_released.md")
+
+    assert_equal <<~OUTPUT, output
+      #{path("plain_unreleased_below_released.md")}:8: [Feature] entry must come before the [Fix] entry on line 7
+    OUTPUT
+    assert_equal 1, status.exitstatus
+  end
+
+  def test_second_unreleased_block_fails
+    output, status = verify("two_unreleased.md")
+
+    assert_equal <<~OUTPUT, output
+      #{path("two_unreleased.md")}:6: second Unreleased block; move its entries into the one on line 3
+    OUTPUT
+    assert_equal 1, status.exitstatus
+  end
+
+  def test_utf8_changelog_passes_with_a_non_utf8_locale
+    output, status = verify("utf8.md", env: {"LANG" => "C", "LC_ALL" => "C"})
+
+    assert_equal "", output
+    assert_equal 0, status.exitstatus
+  end
+
+  def test_invalid_utf8_fails
+    output, status = verify("invalid_utf8.md", env: {"LANG" => "C", "LC_ALL" => "C"})
+
+    assert_equal "#{path("invalid_utf8.md")}:4: invalid UTF-8\n", output
+    assert_equal 1, status.exitstatus
+  end
+
+  def test_unknown_option_fails_with_usage
+    output, status = verify("valid.md", "--bogus")
+
+    assert_equal "invalid option: --bogus\n#{usage}\n", output
+    assert_equal 1, status.exitstatus
+  end
+
+  def test_repo_option_without_value_fails_with_usage
+    output, status = Open3.capture2e(clean_env, RbConfig.ruby, SCRIPT, "--repo", chdir: ROOT)
+
+    assert_equal "missing argument: --repo\n#{usage}\n", output
+    assert_equal 1, status.exitstatus
+  end
+
+  def test_more_than_one_path_fails_with_usage
+    output, status = verify("valid.md", path("untagged.md"))
+
+    assert_equal "only one PATH is allowed\n#{usage}\n", output
+    assert_equal 1, status.exitstatus
+  end
+
   def test_changelog_without_version_block_fails
     output, status = verify("no_version.md")
 
@@ -170,6 +232,10 @@ class VerifyChangelogTest < Minitest::Test
 
   def clean_env
     {"GITHUB_REPOSITORY" => nil}
+  end
+
+  def usage
+    "Usage: bin/verify_changelog [--repo NAME] [PATH]"
   end
 
   def all_tags

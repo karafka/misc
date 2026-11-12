@@ -46,10 +46,24 @@ TAG = /\A[-*+] +(?:\*\*)?\[([^\]]+)\]/
 
 repo = ENV.fetch("GITHUB_REPOSITORY", nil)
 
-OptionParser.new do |opts|
+parser = OptionParser.new do |opts|
   opts.banner = "Usage: bin/verify_changelog [--repo NAME] [PATH]"
   opts.on("--repo NAME", "Repository name (owner/name or name)") { |value| repo = value }
-end.parse!
+end
+
+begin
+  parser.parse!
+rescue OptionParser::ParseError => e
+  puts e.message
+  puts parser.banner
+  exit 1
+end
+
+if ARGV.size > 1
+  puts "only one PATH is allowed"
+  puts parser.banner
+  exit 1
+end
 
 path = ARGV.first || "CHANGELOG.md"
 repo = repo.to_s.split("/").last
@@ -59,7 +73,14 @@ unless File.file?(path)
   exit 1
 end
 
-lines = File.readlines(path, chomp: true)
+lines = File.readlines(path, chomp: true, encoding: "UTF-8")
+invalid = lines.each_index.reject { |index| lines[index].valid_encoding? }
+
+unless invalid.empty?
+  invalid.each { |index| puts "#{path}:#{index + 1}: invalid UTF-8" }
+  exit 1
+end
+
 headings = lines.each_index.select { |index| lines[index].match?(VERSION_HEADING) }
 
 if headings.empty?
@@ -67,10 +88,12 @@ if headings.empty?
   exit 1
 end
 
-start = headings.find { |index| lines[index].match?(UNRELEASED_HEADING) } || headings.first
+unreleased = headings.select { |index| lines[index].match?(UNRELEASED_HEADING) }
+start = unreleased.first || headings.first
 stop = headings.find { |index| index > start } || lines.size
 
 findings = []
+
 # Highest-ranked tag seen so far, as [rank, tag, line number]
 last = nil
 
@@ -115,6 +138,10 @@ last = nil
   else
     last = [rank, tag, number]
   end
+end
+
+unreleased.drop(1).each do |index|
+  findings << [index + 1, "second Unreleased block; move its entries into the one on line #{start + 1}"]
 end
 
 findings.each { |number, problem| puts "#{path}:#{number}: #{problem}" }
