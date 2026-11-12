@@ -21,13 +21,13 @@ It checks only the `## ... (Unreleased)` (or `## Unreleased`) block, or the topm
 bin/verify_changelog [--repo NAME] [PATH]
 ```
 
-`PATH` defaults to `CHANGELOG.md`. The repo name comes from `--repo` or `GITHUB_REPOSITORY`. Each finding is printed as `PATH:LINE: problem`; the exit code is 1 when there is any finding and 0 when the block is clean.
+`PATH` defaults to `CHANGELOG.md`. The repo name comes from `--repo` or `GITHUB_REPOSITORY`. Each finding is printed as `PATH:LINE: problem`; the exit code is 1 when there is any finding and 0 when the block is clean. A second Unreleased block, invalid UTF-8, a bad option or more than one `PATH` also exit with 1.
 
 Run the tests with `ruby test/verify_changelog_test.rb`.
 
 ### Use in a repo's CI
 
-The reusable workflow `.github/workflows/changelog-lint.yml` checks out the calling repo and this one and runs the checker on the caller's `CHANGELOG.md`. Call it from a job pinned to a commit SHA of this repo, and add the job to the `needs` of the repo's `ci-success` job:
+The reusable workflow `.github/workflows/changelog-lint.yml` checks out the calling repo and runs the checker on its `CHANGELOG.md` through the composite action `.github/actions/changelog-lint`. The action and the script run at the commit of this repo that the caller pins. Call it from a job pinned to a commit SHA of this repo, and add the job to the `needs` of the repo's `ci-success` job:
 
 ```yaml
 jobs:
