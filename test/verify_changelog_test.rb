@@ -1,23 +1,20 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "minitest/spec"
 require "open3"
 require "rbconfig"
 require "tmpdir"
 
-class VerifyChangelogTest < Minitest::Test
-  ROOT = File.expand_path("..", __dir__)
-  SCRIPT = File.join(ROOT, "bin", "verify_changelog")
-  FIXTURES = File.join("test", "fixtures")
-
-  def test_valid_changelog_passes
+describe "bin/verify_changelog" do
+  it "expect a valid changelog to pass" do
     output, status = verify("valid.md")
 
     assert_equal "", output
     assert_equal 0, status.exitstatus
   end
 
-  def test_wrong_order_fails
+  it "expect entries in the wrong order to fail" do
     output, status = verify("wrong_order.md")
 
     assert_equal <<~OUTPUT, output
@@ -27,7 +24,7 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_synonyms_fail_with_the_main_tag
+  it "expect synonyms to fail with the main tag" do
     output, status = verify("synonym.md")
 
     assert_equal <<~OUTPUT, output
@@ -40,7 +37,7 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_test_only_entries_fail_with_a_hint_to_remove_them
+  it "expect test-only entries to fail with a hint to remove them" do
     output, status = verify("test_only.md")
 
     assert_equal <<~OUTPUT, output
@@ -50,7 +47,7 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_unknown_tag_fails
+  it "expect an unknown tag to fail" do
     output, status = verify("unknown_tag.md")
 
     assert_equal <<~OUTPUT, output
@@ -60,7 +57,7 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_untagged_entry_fails
+  it "expect an untagged entry to fail" do
     output, status = verify("untagged.md")
 
     assert_equal <<~OUTPUT, output
@@ -70,7 +67,7 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_bold_tags_are_the_same_as_plain_tags
+  it "expect bold tags to be the same as plain tags" do
     output, status = verify("bold.md")
 
     assert_equal <<~OUTPUT, output
@@ -79,7 +76,7 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_patch_is_allowed_in_rdkafka_repos
+  it "expect [Patch] to be allowed in the rdkafka repos" do
     %w[karafka/rdkafka-ruby karafka/karafka-rdkafka karafka-rdkafka].each do |repo|
       output, status = verify("patch.md", "--repo", repo)
 
@@ -88,14 +85,14 @@ class VerifyChangelogTest < Minitest::Test
     end
   end
 
-  def test_patch_repo_is_read_from_github_repository
+  it "expect the repo to be read from GITHUB_REPOSITORY" do
     output, status = verify("patch.md", env: {"GITHUB_REPOSITORY" => "karafka/rdkafka-ruby"})
 
     assert_equal "", output
     assert_equal 0, status.exitstatus
   end
 
-  def test_patch_fails_in_other_repos
+  it "expect [Patch] to fail in other repos" do
     [["--repo", "karafka/karafka"], []].each do |args|
       output, status = verify("patch.md", *args)
 
@@ -106,7 +103,7 @@ class VerifyChangelogTest < Minitest::Test
     end
   end
 
-  def test_repo_option_wins_over_github_repository
+  it "expect --repo to win over GITHUB_REPOSITORY" do
     output, status = verify(
       "patch.md",
       "--repo", "karafka/waterdrop",
@@ -117,7 +114,7 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_without_unreleased_block_the_topmost_block_is_checked
+  it "expect the topmost block to be checked when there is no Unreleased block" do
     output, status = verify("no_unreleased.md")
 
     assert_equal <<~OUTPUT, output
@@ -126,14 +123,14 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_released_blocks_are_ignored
+  it "expect released blocks to be ignored" do
     output, status = verify("released_ignored.md")
 
     assert_equal "", output
     assert_equal 0, status.exitstatus
   end
 
-  def test_unreleased_block_below_a_released_block_is_checked
+  it "expect an (Unreleased) block below a released block to be checked" do
     output, status = verify("unreleased_below_released.md")
 
     assert_equal <<~OUTPUT, output
@@ -142,7 +139,7 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_plain_unreleased_heading_below_a_released_block_is_checked
+  it "expect an ## Unreleased block below a released block to be checked" do
     output, status = verify("plain_unreleased_below_released.md")
 
     assert_equal <<~OUTPUT, output
@@ -151,7 +148,7 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_second_unreleased_block_fails
+  it "expect a second Unreleased block to fail" do
     output, status = verify("two_unreleased.md")
 
     assert_equal <<~OUTPUT, output
@@ -160,74 +157,80 @@ class VerifyChangelogTest < Minitest::Test
     assert_equal 1, status.exitstatus
   end
 
-  def test_utf8_changelog_passes_with_a_non_utf8_locale
+  it "expect a UTF-8 changelog to pass with a non-UTF-8 locale" do
     output, status = verify("utf8.md", env: {"LANG" => "C", "LC_ALL" => "C"})
 
     assert_equal "", output
     assert_equal 0, status.exitstatus
   end
 
-  def test_invalid_utf8_fails
+  it "expect invalid UTF-8 to fail" do
     output, status = verify("invalid_utf8.md", env: {"LANG" => "C", "LC_ALL" => "C"})
 
     assert_equal "#{path("invalid_utf8.md")}:4: invalid UTF-8\n", output
     assert_equal 1, status.exitstatus
   end
 
-  def test_unknown_option_fails_with_usage
+  it "expect an unknown option to fail with the usage line" do
     output, status = verify("valid.md", "--bogus")
 
     assert_equal "invalid option: --bogus\n#{usage}\n", output
     assert_equal 1, status.exitstatus
   end
 
-  def test_repo_option_without_value_fails_with_usage
-    output, status = Open3.capture2e(clean_env, RbConfig.ruby, SCRIPT, "--repo", chdir: ROOT)
+  it "expect --repo without a value to fail with the usage line" do
+    output, status = Open3.capture2e(clean_env, RbConfig.ruby, script, "--repo", chdir: root)
 
     assert_equal "missing argument: --repo\n#{usage}\n", output
     assert_equal 1, status.exitstatus
   end
 
-  def test_more_than_one_path_fails_with_usage
+  it "expect more than one path to fail with the usage line" do
     output, status = verify("valid.md", path("untagged.md"))
 
     assert_equal "only one PATH is allowed\n#{usage}\n", output
     assert_equal 1, status.exitstatus
   end
 
-  def test_changelog_without_version_block_fails
+  it "expect a changelog without a version block to fail" do
     output, status = verify("no_version.md")
 
     assert_equal "#{path("no_version.md")}:1: no version block (## heading) found\n", output
     assert_equal 1, status.exitstatus
   end
 
-  def test_missing_file_fails
+  it "expect a missing file to fail" do
     output, status = verify("missing.md")
 
     assert_equal "#{path("missing.md")}: file not found\n", output
     assert_equal 1, status.exitstatus
   end
 
-  def test_path_defaults_to_changelog_md
+  it "expect the path to default to CHANGELOG.md" do
     Dir.mktmpdir do |dir|
       File.write(File.join(dir, "CHANGELOG.md"), "## Unreleased\n- [Feature] Add `#new`.\n- Untagged.\n")
 
-      output, status = Open3.capture2e(clean_env, RbConfig.ruby, SCRIPT, chdir: dir)
+      output, status = Open3.capture2e(clean_env, RbConfig.ruby, script, chdir: dir)
 
       assert_equal "CHANGELOG.md:3: entry has no tag; start it with one of #{all_tags}\n", output
       assert_equal 1, status.exitstatus
     end
   end
 
-  private
+  def root
+    File.expand_path("..", __dir__)
+  end
+
+  def script
+    File.join(root, "bin", "verify_changelog")
+  end
 
   def verify(fixture, *args, env: {})
-    Open3.capture2e(clean_env.merge(env), RbConfig.ruby, SCRIPT, *args, path(fixture), chdir: ROOT)
+    Open3.capture2e(clean_env.merge(env), RbConfig.ruby, script, *args, path(fixture), chdir: root)
   end
 
   def path(fixture)
-    File.join(FIXTURES, fixture)
+    File.join("test", "fixtures", fixture)
   end
 
   def clean_env

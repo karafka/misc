@@ -94,8 +94,9 @@ stop = headings.find { |index| index > start } || lines.size
 
 findings = []
 
-# Highest-ranked tag seen so far, as [rank, tag, line number]
-last = nil
+top_rank = -1
+top_tag = nil
+top_number = nil
 
 (start + 1...stop).each do |index|
   line = lines[index]
@@ -133,10 +134,12 @@ last = nil
 
   rank = TAGS.index(tag)
 
-  if last && rank < last[0]
-    findings << [number, "[#{tag}] entry must come before the [#{last[1]}] entry on line #{last[2]}"]
+  if rank < top_rank
+    findings << [number, "[#{tag}] entry must come before the [#{top_tag}] entry on line #{top_number}"]
   else
-    last = [rank, tag, number]
+    top_rank = rank
+    top_tag = tag
+    top_number = number
   end
 end
 
