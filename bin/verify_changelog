@@ -1,0 +1,122 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Checks the tags of the entries in the CHANGELOG.md of a Karafka ecosystem gem.
+#
+# Only the "(Unreleased)" version block is checked, or the topmost version block when there is
+# none. Released versions below it are history and stay as they are.
+#
+# Usage: bin/verify_changelog [--repo NAME] [PATH]
+#
+# PATH defaults to CHANGELOG.md. The repo name comes from --repo or GITHUB_REPOSITORY.
+# Prints "PATH:LINE: problem" for each finding and exits with 1 when there is any.
+
+require "optparse"
+
+# Allowed tags, in the order they must appear inside a version block
+TAGS = %w[
+  Breaking
+  EOL
+  Feature
+  Enhancement
+  Change
+  Refactor
+  Maintenance
+  Patch
+  Fix
+].freeze
+
+SYNONYMS = {
+  "improvement" => "Enhancement",
+  "refactoring" => "Refactor",
+  "breaking change" => "Breaking",
+  "deprecation" => "Change",
+  "deprecated" => "Change"
+}.freeze
+
+TEST_ONLY_TAGS = %w[testing specs].freeze
+
+# Repos that patch librdkafka's source and may use [Patch]
+PATCH_REPOS = %w[rdkafka-ruby karafka-rdkafka].freeze
+
+VERSION_HEADING = /\A## /
+UNRELEASED_HEADING = /\A## .*\bunreleased\b/i
+ENTRY = /\A[-*+] /
+TAG = /\A[-*+] +(?:\*\*)?\[([^\]]+)\]/
+
+repo = ENV.fetch("GITHUB_REPOSITORY", nil)
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: bin/verify_changelog [--repo NAME] [PATH]"
+  opts.on("--repo NAME", "Repository name (owner/name or name)") { |value| repo = value }
+end.parse!
+
+path = ARGV.first || "CHANGELOG.md"
+repo = repo.to_s.split("/").last
+
+unless File.file?(path)
+  puts "#{path}: file not found"
+  exit 1
+end
+
+lines = File.readlines(path, chomp: true)
+headings = lines.each_index.select { |index| lines[index].match?(VERSION_HEADING) }
+
+if headings.empty?
+  puts "#{path}:1: no version block (## heading) found"
+  exit 1
+end
+
+start = headings.find { |index| lines[index].match?(UNRELEASED_HEADING) } || headings.first
+stop = headings.find { |index| index > start } || lines.size
+
+findings = []
+# Highest-ranked tag seen so far, as [rank, tag, line number]
+last = nil
+
+(start + 1...stop).each do |index|
+  line = lines[index]
+  number = index + 1
+
+  next unless line.match?(ENTRY)
+
+  match = line.match(TAG)
+
+  unless match
+    findings << [number, "entry has no tag; start it with one of #{TAGS.map { |tag| "[#{tag}]" }.join(" ")}"]
+    next
+  end
+
+  written = match[1]
+  key = written.strip.downcase
+  tag = TAGS.find { |allowed| allowed.downcase == key }
+
+  if tag
+    findings << [number, "tag [#{written}] must be written [#{tag}]"] if tag != written
+  elsif SYNONYMS.key?(key)
+    tag = SYNONYMS.fetch(key)
+    findings << [number, "tag [#{written}] is not allowed; use [#{tag}]"]
+  elsif TEST_ONLY_TAGS.include?(key)
+    findings << [number, "tag [#{written}] is not allowed; test-only changes get no entry, remove this line"]
+    next
+  else
+    findings << [number, "unknown tag [#{written}]; use one of #{TAGS.map { |allowed| "[#{allowed}]" }.join(" ")}"]
+    next
+  end
+
+  if tag == "Patch" && !PATCH_REPOS.include?(repo)
+    findings << [number, "tag [Patch] is allowed only in #{PATCH_REPOS.join(" and ")}"]
+  end
+
+  rank = TAGS.index(tag)
+
+  if last && rank < last[0]
+    findings << [number, "[#{tag}] entry must come before the [#{last[1]}] entry on line #{last[2]}"]
+  else
+    last = [rank, tag, number]
+  end
+end
+
+findings.each { |number, problem| puts "#{path}:#{number}: #{problem}" }
+
+exit(findings.empty? ? 0 : 1)
