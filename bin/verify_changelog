@@ -1,0 +1,152 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Checks the tags of the entries in the CHANGELOG.md of a Karafka ecosystem gem.
+#
+# Only the "(Unreleased)" version block is checked, or the topmost version block when there is
+# none. Released versions below it are history and stay as they are.
+#
+# Usage: bin/verify_changelog [--repo NAME] [PATH]
+#
+# PATH defaults to CHANGELOG.md. The repo name comes from --repo or GITHUB_REPOSITORY.
+# Prints "PATH:LINE: problem" for each finding and exits with 1 when there is any.
+
+require "optparse"
+
+# Allowed tags, in the order they must appear inside a version block
+TAGS = %w[
+  Breaking
+  EOL
+  Feature
+  Enhancement
+  Change
+  Refactor
+  Maintenance
+  Patch
+  Fix
+].freeze
+
+SYNONYMS = {
+  "improvement" => "Enhancement",
+  "refactoring" => "Refactor",
+  "breaking change" => "Breaking",
+  "deprecation" => "Change",
+  "deprecated" => "Change"
+}.freeze
+
+TEST_ONLY_TAGS = %w[testing specs].freeze
+
+# Repos that patch librdkafka's source and may use [Patch]
+PATCH_REPOS = %w[rdkafka-ruby karafka-rdkafka].freeze
+
+VERSION_HEADING = /\A## /
+UNRELEASED_HEADING = /\A## .*\bunreleased\b/i
+ENTRY = /\A[-*+] /
+TAG = /\A[-*+] +(?:\*\*)?\[([^\]]+)\]/
+
+repo = ENV.fetch("GITHUB_REPOSITORY", nil)
+
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: bin/verify_changelog [--repo NAME] [PATH]"
+  opts.on("--repo NAME", "Repository name (owner/name or name)") { |value| repo = value }
+end
+
+begin
+  parser.parse!
+rescue OptionParser::ParseError => e
+  puts e.message
+  puts parser.banner
+  exit 1
+end
+
+if ARGV.size > 1
+  puts "only one PATH is allowed"
+  puts parser.banner
+  exit 1
+end
+
+path = ARGV.first || "CHANGELOG.md"
+repo = repo.to_s.split("/").last
+
+unless File.file?(path)
+  puts "#{path}: file not found"
+  exit 1
+end
+
+lines = File.readlines(path, chomp: true, encoding: "UTF-8")
+invalid = lines.each_index.reject { |index| lines[index].valid_encoding? }
+
+unless invalid.empty?
+  invalid.each { |index| puts "#{path}:#{index + 1}: invalid UTF-8" }
+  exit 1
+end
+
+headings = lines.each_index.select { |index| lines[index].match?(VERSION_HEADING) }
+
+if headings.empty?
+  puts "#{path}:1: no version block (## heading) found"
+  exit 1
+end
+
+unreleased = headings.select { |index| lines[index].match?(UNRELEASED_HEADING) }
+start = unreleased.first || headings.first
+stop = headings.find { |index| index > start } || lines.size
+
+findings = []
+
+top_rank = -1
+top_tag = nil
+top_number = nil
+
+(start + 1...stop).each do |index|
+  line = lines[index]
+  number = index + 1
+
+  next unless line.match?(ENTRY)
+
+  match = line.match(TAG)
+
+  unless match
+    findings << [number, "entry has no tag; start it with one of #{TAGS.map { |tag| "[#{tag}]" }.join(" ")}"]
+    next
+  end
+
+  written = match[1]
+  key = written.strip.downcase
+  tag = TAGS.find { |allowed| allowed.downcase == key }
+
+  if tag
+    findings << [number, "tag [#{written}] must be written [#{tag}]"] if tag != written
+  elsif SYNONYMS.key?(key)
+    tag = SYNONYMS.fetch(key)
+    findings << [number, "tag [#{written}] is not allowed; use [#{tag}]"]
+  elsif TEST_ONLY_TAGS.include?(key)
+    findings << [number, "tag [#{written}] is not allowed; test-only changes get no entry, remove this line"]
+    next
+  else
+    findings << [number, "unknown tag [#{written}]; use one of #{TAGS.map { |allowed| "[#{allowed}]" }.join(" ")}"]
+    next
+  end
+
+  if tag == "Patch" && !PATCH_REPOS.include?(repo)
+    findings << [number, "tag [Patch] is allowed only in #{PATCH_REPOS.join(" and ")}"]
+  end
+
+  rank = TAGS.index(tag)
+
+  if rank < top_rank
+    findings << [number, "[#{tag}] entry must come before the [#{top_tag}] entry on line #{top_number}"]
+  else
+    top_rank = rank
+    top_tag = tag
+    top_number = number
+  end
+end
+
+unreleased.drop(1).each do |index|
+  findings << [index + 1, "second Unreleased block; move its entries into the one on line #{start + 1}"]
+end
+
+findings.each { |number, problem| puts "#{path}:#{number}: #{problem}" }
+
+exit(findings.empty? ? 0 : 1)

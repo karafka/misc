@@ -1,0 +1,21 @@
+name: CHANGELOG Lint
+description: Checks a CHANGELOG.md with bin/verify_changelog from this commit of karafka/misc
+
+inputs:
+  path:
+    description: Path of the CHANGELOG to check
+    default: CHANGELOG.md
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
+      with:
+        ruby-version: '4.0.9'
+
+    - name: Verify CHANGELOG
+      shell: bash
+      env:
+        CHANGELOG_PATH: ${{ inputs.path }}
+      run: ruby "$GITHUB_ACTION_PATH/../../../bin/verify_changelog" "$CHANGELOG_PATH"
