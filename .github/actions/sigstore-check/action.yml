@@ -1,0 +1,15 @@
+name: Sigstore Check
+description: Signs the built gem with Sigstore like Gem Push does and verifies the attestation, without pushing
+
+runs:
+  using: composite
+  steps:
+    - name: Sign and verify the gem
+      shell: bash
+      run: |
+        gem_file=$("$GITHUB_ACTION_PATH/../../../bin/single_gem")
+
+        "$GITHUB_ACTION_PATH/../../../bin/sigstore" sign "$gem_file" --bundle "$gem_file.sigstore.json"
+        "$GITHUB_ACTION_PATH/../../../bin/sigstore" verify "$gem_file" --bundle "$gem_file.sigstore.json" \
+          --certificate-identity "https://github.com/${GITHUB_WORKFLOW_REF}" \
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com

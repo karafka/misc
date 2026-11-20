@@ -1,0 +1,35 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "minimumReleaseAge": "7 days",
+  "includePaths": [
+    ".github/actions/**",
+    "bin/sigstore"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Gems installed by the Sigstore signing script of the Gem Push and Sigstore Check actions",
+      "managerFilePatterns": [
+        "/^bin/sigstore$/"
+      ],
+      "matchStrings": [
+        "gem install (?<depName>[a-z0-9_-]+) -v (?<currentValue>[0-9.]+)"
+      ],
+      "datasourceTemplate": "rubygems"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "pinDigests": true
+    }
+  ],
+  "labels": [
+    "dependencies"
+  ]
+}

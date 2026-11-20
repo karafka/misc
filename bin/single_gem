@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Prints the one .gem file in the current directory, fails when there is none or more than one
+set -euo pipefail
+
+shopt -s nullglob
+gem_files=(*.gem)
+
+if [ "${#gem_files[@]}" -ne 1 ]; then
+  echo "::error::Expected one .gem file in $(pwd), found ${#gem_files[@]}: ${gem_files[*]}" >&2
+  exit 1
+fi
+
+echo "${gem_files[0]}"
