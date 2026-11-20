@@ -27,16 +27,6 @@
         "github-actions"
       ],
       "pinDigests": true
-    },
-    {
-      "description": "sigstore-cli does not work with json 3.x; Renovate keeps proposing it, merge once the Sigstore Check of a gem repo passes with it",
-      "matchFileNames": [
-        "bin/sigstore"
-      ],
-      "matchPackageNames": [
-        "json"
-      ],
-      "automerge": false
     }
   ],
   "labels": [
